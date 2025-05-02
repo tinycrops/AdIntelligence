@@ -65,17 +65,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Store the video
-      const videoPath = await storage.storeVideo(
+      const result = await storage.storeVideo(
         req.file.buffer,
         req.file.originalname
       );
 
-      // Extract videoId from the path
-      const videoId = path.basename(videoPath, path.extname(videoPath));
-
       res.status(200).json({
         message: "Video uploaded successfully",
-        videoId,
+        videoId: result.id,
         originalName: req.file.originalname,
       });
     } catch (error) {
@@ -91,15 +88,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "No video file uploaded" });
       }
 
-      // Create a unique ID for this analysis
-      const videoId = nanoid();
+      // First, register the video in the database to get a valid videoId
+      const videoResult = await storage.storeVideo(
+        req.file.buffer, 
+        req.file.originalname || "uploaded_video.mp4"
+      );
+      
+      const videoId = videoResult.id;
       const videoPath = path.join(uploadsDir, `${videoId}.mp4`);
-
-      // Save the uploaded video to disk
-      await fs.promises.writeFile(videoPath, req.file.buffer);
-
-      // First, register the video in the database to satisfy the foreign key constraint
-      await storage.storeVideo(req.file.buffer, req.file.originalname || "uploaded_video.mp4");
 
       // Extract frames for analysis
       const framePaths = await extractFrames(videoPath, 30);
@@ -196,10 +192,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "No ad spots provided" });
       }
 
-      // Create unique ID and save video
-      const videoId = nanoid();
-      const videoPath = path.join(uploadsDir, `${videoId}.mp4`);
-      await fs.promises.writeFile(videoPath, req.file.buffer);
+      // Save video and get videoId
+      const videoResult = await storage.storeVideo(
+        req.file.buffer,
+        req.file.originalname || "uploaded_video.mp4"
+      );
+      const videoId = videoResult.id;
+      const videoPath = videoResult.path;
 
       // Create a processing job
       const jobId = await storage.storeProcessingJob(videoId, "processing");

@@ -28,7 +28,7 @@ const OUTPUT_DIR = path.join(process.cwd(), "tmp", "output");
  * @param fileName - Original filename
  * @returns Path to the stored video file
  */
-export async function storeVideo(file: Buffer, fileName: string): Promise<string> {
+export async function storeVideo(file: Buffer, fileName: string): Promise<{ path: string, id: string }> {
   const videoId = nanoid();
   const extension = path.extname(fileName);
   const storedFileName = `${videoId}${extension}`;
@@ -46,7 +46,7 @@ export async function storeVideo(file: Buffer, fileName: string): Promise<string
     uploadedAt: new Date(),
   });
   
-  return storedFilePath;
+  return { path: storedFilePath, id: videoId };
 }
 
 /**
