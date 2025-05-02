@@ -4,14 +4,16 @@ import * as storage from "./storage";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { extractFrames, readFramesAsBase64, insertAdsIntoVideo, cleanupTempFiles } from "./ffmpeg";
+import { extractFrames, readFramesAsBase64, cleanupTempFiles } from "./ffmpeg";
 import { analyzeVideoFrames } from "./openai";
+import { insertOverlayAds } from "./adInsertion";
+import { spawn, spawnSync } from 'child_process';
 // Define the AdSpot interface for the routes
 interface AdSpot {
   id: string;
   timestamp: number;
   type: string;
-  confidence: string;
+  confidence: number;
   description?: string;
   thumbnailUrl?: string;
 }
@@ -108,7 +110,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // For demo/testing - if no spots detected or OpenAI fails, provide some defaults
       if (!adSpots || adSpots.length === 0) {
         // Create some sample ad spots based on the video duration
-        const ffprobe = require("child_process").spawnSync("ffprobe", [
+        const ffprobe = spawnSync("ffprobe", [
           "-v",
           "error",
           "-show_entries",
@@ -126,21 +128,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             id: nanoid(),
             timestamp: Math.round(duration * 0.25),
             type: "Player Death",
-            confidence: "High",
+            confidence: 0.9,
             description: "Player eliminated by opponent",
           },
           {
             id: nanoid(),
             timestamp: Math.round(duration * 0.5),
             type: "Recall",
-            confidence: "Medium",
+            confidence: 0.7,
             description: "Player returning to base",
           },
           {
             id: nanoid(),
             timestamp: Math.round(duration * 0.75),
             type: "Game Pause",
-            confidence: "High",
+            confidence: 0.8,
             description: "Natural break in gameplay",
           },
         ];
@@ -198,68 +200,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.file.originalname || "uploaded_video.mp4"
       );
       const videoId = videoResult.id;
-      const videoPath = videoResult.path;
 
-      // Create a processing job
-      const jobId = await storage.storeProcessingJob(videoId, "processing");
+      // Get paths
+      const videoPath = path.join(uploadsDir, `${videoId}.mp4`);
+      
+      try {
+        // Insert ad overlays
+        const outputVideoPath = await insertOverlayAds(
+          videoPath,
+          adSpots,
+          outputDir
+        );
 
-      // Use a sample ad video (in a real app, this would be selected based on preferences)
-      const adVideoPath = path.join(
-        process.cwd(),
-        "db",
-        "sample_data",
-        "sample_ad.mp4"
-      );
+        // Get relative path for response
+        const relativePath = path.relative(process.cwd(), outputVideoPath);
+        const outputUrl = `/api/videos/outputs/${path.basename(outputVideoPath)}`;
 
-      // If sample ad doesn't exist, create a simple one
-      if (!fs.existsSync(adVideoPath)) {
-        // Path where FFmpeg should be
-        const ffmpegPath = "ffmpeg";
-
-        // Create a simple 15-second ad as a solid color with text
-        const adDir = path.dirname(adVideoPath);
-        if (!fs.existsSync(adDir)) {
-          fs.mkdirSync(adDir, { recursive: true });
-        }
-
-        const ffmpeg = require("child_process").spawnSync(ffmpegPath, [
-          "-f",
-          "lavfi",
-          "-i",
-          "color=c=blue:s=1280x720:d=15",
-          "-vf",
-          "drawtext=text='Sample Advertisement':fontcolor=white:fontsize=60:x=(w-text_w)/2:y=(h-text_h)/2",
-          "-c:v",
-          "libx264",
-          adVideoPath,
-        ]);
-
-        if (!fs.existsSync(adVideoPath)) {
-          return res.status(500).json({
-            message: "Failed to create sample ad video for processing",
-          });
-        }
+        res.status(200).json({
+          message: "Video processed successfully",
+          videoId,
+          outputUrl,
+        });
+      } catch (error) {
+        console.error("Error processing video with ads:", error);
+        throw error;
+      } finally {
+        // Clean up temporary files
+        cleanupTempFiles(videoId);
       }
-
-      // For this demo, we'll skip actual video processing with FFmpeg (which requires FFmpeg to be installed)
-      // and just copy the original video to the output directory with a different name
-      const outputPath = path.join(outputDir, `${videoId}_with_ads.mp4`);
-      await fs.promises.copyFile(videoPath, outputPath);
-
-      // Update processing job status
-      await storage.updateProcessingJob(jobId, "completed", outputPath);
-
-      // In a real implementation, we would process the video with FFmpeg to insert ads
-      // const outputPath = await insertAdsIntoVideo(videoPath, adVideoPath, adSpots);
-
-      // Create download URL
-      const downloadUrl = `/api/videos/outputs/${path.basename(outputPath)}`;
-
-      res.status(200).json({
-        downloadUrl,
-        message: "Video processed successfully",
-        jobId,
-      });
     } catch (error) {
       console.error("Error processing video:", error);
       res.status(500).json({ message: "Failed to process video" });
