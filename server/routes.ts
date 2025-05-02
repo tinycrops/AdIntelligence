@@ -98,6 +98,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Save the uploaded video to disk
       await fs.promises.writeFile(videoPath, req.file.buffer);
 
+      // First, register the video in the database to satisfy the foreign key constraint
+      await storage.storeVideo(req.file.buffer, req.file.originalname || "uploaded_video.mp4");
+
       // Extract frames for analysis
       const framePaths = await extractFrames(videoPath, 30);
       const frameData = await readFramesAsBase64(framePaths);
