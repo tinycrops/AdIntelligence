@@ -49,7 +49,7 @@ export async function insertOverlayAds(
     '-i', overlayPath,              // Overlay image
     '-filter_complex', filterComplex, // Filter complex for overlays
     '-map', '[outv]',               // Map video output
-    '-map', '0:a',                  // Map original audio
+    '-map', '0:a?',                // Map original audio (optional)
     '-c:v', 'libx264',              // Video codec
     '-c:a', 'copy',                 // Copy audio codec
     '-y',                           // Overwrite output
