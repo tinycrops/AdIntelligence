@@ -2,7 +2,6 @@ import { useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatFileSize } from "@/lib/utils/file";
@@ -24,7 +23,6 @@ export default function UploadSection({
   onAnalyzeVideo,
 }: UploadSectionProps) {
   const [isDragging, setIsDragging] = useState(false);
-  const [gameType, setGameType] = useState("league_of_legends");
   const [sensitivity, setSensitivity] = useState([5]);
   const [prioritizeBreaks, setPrioritizeBreaks] = useState(true);
   
@@ -158,25 +156,6 @@ export default function UploadSection({
         {/* Processing Settings */}
         <div className="mt-6">
           <h3 className="text-md font-medium mb-3">Processing Settings</h3>
-          
-          <div className="mb-4">
-            <Label htmlFor="game-type">Game Content Type</Label>
-            <Select 
-              value={gameType} 
-              onValueChange={setGameType}
-              disabled={isProcessing}
-            >
-              <SelectTrigger id="game-type" className="w-full">
-                <SelectValue placeholder="Select game" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="league_of_legends">League of Legends</SelectItem>
-                <SelectItem value="valorant">Valorant</SelectItem>
-                <SelectItem value="fortnite">Fortnite</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
           
           <div className="mb-4">
             <Label htmlFor="sensitivity" className="mb-2 block">Detection Sensitivity</Label>

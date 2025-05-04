@@ -19,11 +19,13 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "" });
  * 
  * @param frames - Array of base64-encoded frame images
  * @param gameType - Type of game content (e.g., "league_of_legends")
+ * @param customPrompt - Optional custom prompt to use for analysis
  * @returns Array of detected ad spots
  */
 export async function analyzeVideoFrames(
   frames: string[],
-  gameType: string = "league_of_legends"
+  gameType: string = "league_of_legends",
+  customPrompt?: string
 ): Promise<AdSpot[]> {
   try {
     // Prepare frames for analysis (sample frames to avoid excessive API costs)
@@ -33,17 +35,25 @@ export async function analyzeVideoFrames(
     const gameContext = getGameContext(gameType);
     
     // Prepare the analysis prompt
-    const prompt = `
-      Analyze these frames from a ${gameType} gameplay video.
-      Identify moments that would be natural breaks for ad insertion.
-      ${gameContext}
-      
-      For each natural break you detect, provide:
-      1. The approximate timestamp (frame number)
-      2. The type of break (death, recall, pause, game end, etc.)
-      3. Confidence level (high, medium, low)
-      4. Brief description of what's happening
-      
+    let prompt = customPrompt;
+    
+    // If no custom prompt provided, use the default prompt
+    if (!prompt) {
+      prompt = `
+        Analyze these frames from a ${gameType} gameplay video.
+        Identify moments that would be natural breaks for ad insertion.
+        ${gameContext}
+        
+        For each natural break you detect, provide:
+        1. The approximate timestamp (frame number)
+        2. The type of break (death, recall, pause, game end, etc.)
+        3. Confidence level (high, medium, low)
+        4. Brief description of what's happening
+      `;
+    }
+    
+    // Always append the required response format instructions to ensure compatibility
+    const responseFormatInstructions = `
       Format your response as JSON with an array of objects with these fields:
       {
         "adSpots": [
@@ -55,7 +65,19 @@ export async function analyzeVideoFrames(
           }
         ]
       }
+      
+      The "timestamp" must be a number representing the frame number.
+      The "type" must be a short string describing the type of break.
+      The "confidence" must be one of: "high", "medium", or "low".
+      The "description" should be a brief description of what's happening.
+      
+      This exact response format is required for the system to work.
     `;
+    
+    // Ensure response format is appended to custom prompts
+    if (!prompt.includes('"adSpots"')) {
+      prompt = `${prompt}\n\n${responseFormatInstructions}`;
+    }
 
     // Analyze the frames using OpenAI's Vision API
     const response = await openai.chat.completions.create({
@@ -80,15 +102,30 @@ export async function analyzeVideoFrames(
 
     // Parse and return the results
     const content = response.choices[0].message.content || '{"adSpots":[]}';
-    const result = JSON.parse(content);
+    let result;
+    
+    try {
+      result = JSON.parse(content);
+      
+      // Ensure response has the expected structure
+      if (!result.adSpots || !Array.isArray(result.adSpots)) {
+        console.warn("Invalid response format from OpenAI, missing adSpots array:", content);
+        result = { adSpots: [] };
+      }
+    } catch (error) {
+      console.error("Failed to parse OpenAI response:", error);
+      console.warn("Raw content:", content);
+      result = { adSpots: [] };
+    }
     
     // Convert frame numbers to seconds (assuming 1 frame per second for simplicity)
+    // Validate and sanitize each spot to ensure it has all required fields
     return result.adSpots.map((spot: any, index: number) => ({
       id: `spot-${index + 1}`,
-      timestamp: parseInt(spot.timestamp),
-      type: spot.type,
-      confidence: spot.confidence,
-      description: spot.description
+      timestamp: typeof spot.timestamp === 'number' ? spot.timestamp : parseInt(spot.timestamp) || 0,
+      type: spot.type || "Unknown",
+      confidence: spot.confidence || "medium",
+      description: spot.description || ""
     }));
   } catch (error) {
     console.error("OpenAI analysis error:", error);
@@ -122,7 +159,7 @@ function sampleFrames(frames: string[], maxFrames: number): string[] {
  * @param gameType - Type of game content
  * @returns Game-specific context string
  */
-function getGameContext(gameType: string): string {
+export function getGameContext(gameType: string): string {
   switch (gameType) {
     case "league_of_legends":
       return `

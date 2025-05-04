@@ -5,7 +5,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { extractFrames, readFramesAsBase64, cleanupTempFiles } from "./ffmpeg";
-import { analyzeVideoFrames } from "./openai";
+import { analyzeVideoFrames, getGameContext } from "./openai";
 import { insertOverlayAds } from "./adInsertion";
 import { spawn, spawnSync } from 'child_process';
 // Define the AdSpot interface for the routes
@@ -105,7 +105,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Analyze frames with OpenAI
       const gameType = req.body.gameType || "league_of_legends";
-      const adSpots = await analyzeVideoFrames(frameData, gameType);
+      const customPrompt = req.body.customPrompt;
+      const adSpots = await analyzeVideoFrames(frameData, gameType, customPrompt);
 
       // For demo/testing - if no spots detected or OpenAI fails, provide some defaults
       if (!adSpots || adSpots.length === 0) {
@@ -248,6 +249,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error getting job status:", error);
       res.status(500).json({ message: "Failed to get job status" });
+    }
+  });
+
+  // Get default prompt for a game type
+  app.get("/api/prompts/:gameType", async (req, res) => {
+    try {
+      const gameType = req.params.gameType || "league_of_legends";
+      const gameContext = getGameContext(gameType);
+      
+      // Get the base prompt structure
+      const basePrompt = `
+      Analyze these frames from a ${gameType} gameplay video.
+      Identify moments that would be natural breaks for ad insertion.
+      ${gameContext}
+      
+      For each natural break you detect, provide:
+      1. The approximate timestamp (frame number)
+      2. The type of break (death, recall, pause, game end, etc.)
+      3. Confidence level (high, medium, low)
+      4. Brief description of what's happening
+      
+      Format your response as JSON with an array of objects with these fields:
+      {
+        "adSpots": [
+          {
+            "timestamp": <frame_number>,
+            "type": "<break_type>",
+            "confidence": "<confidence_level>",
+            "description": "<brief_description>"
+          }
+        ]
+      }
+      `;
+      
+      res.status(200).json({ prompt: basePrompt });
+    } catch (error) {
+      console.error("Error getting prompt:", error);
+      res.status(500).json({ message: "Failed to get prompt" });
     }
   });
 

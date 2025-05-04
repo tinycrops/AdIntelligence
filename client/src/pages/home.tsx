@@ -3,6 +3,7 @@ import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
 import UploadSection from "@/components/upload-section";
 import VideoPreview from "@/components/video-preview";
+import PromptEditor from "@/components/prompt-editor";
 import { type VideoFile, type AdSpot } from "@/lib/types";
 
 export default function Home() {
@@ -11,6 +12,8 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState("Initializing...");
   const [processingProgress, setProcessingProgress] = useState(0);
+  const [gameType, setGameType] = useState("league_of_legends");
+  const [customPrompt, setCustomPrompt] = useState("");
 
   const handleFileUpload = (file: VideoFile) => {
     setVideoFile(file);
@@ -33,6 +36,10 @@ export default function Home() {
       // Create FormData for file upload
       const formData = new FormData();
       formData.append("video", videoFile.file);
+      formData.append("gameType", gameType);
+      if (customPrompt) {
+        formData.append("customPrompt", customPrompt);
+      }
       
       // Simulate progress updates
       const progressInterval = setInterval(() => {
@@ -179,6 +186,16 @@ export default function Home() {
               <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-semibold">4</div>
               <div className="ml-3">Download</div>
             </div>
+          </div>
+          
+          {/* Prompt Editor */}
+          <div className="mb-8">
+            <PromptEditor
+              gameType={gameType}
+              onGameTypeChange={setGameType}
+              onPromptChange={setCustomPrompt}
+              disabled={isProcessing}
+            />
           </div>
           
           {/* Main content grid */}
